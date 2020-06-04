@@ -1,0 +1,65 @@
+Parameters:
+  S3BucketName:
+    Type: String
+    Default: ttngmys3bktnameFunctionRole:
+    Type: String
+    Default: "arn:aws:iam::759661093277:role/lambda_s3_exec_role"Resources:
+  MyCustomResource:
+    Type: Custom::MyCustomResource
+    Properties:
+      ServiceToken: !GetAtt MyLambdaFunction.Arn
+      StackName: !Ref AWS::StackName
+      NewS3Bucket: !Ref S3BucketNameMyLambdaFunction:
+    Type: "AWS::Lambda::Function"
+    Description: Creates a S3 bucket and tags it with the stack name.
+    Properties:
+      Handler: "index.lambda_handler"
+      Role: !Ref FunctionRole
+      Timeout: 15
+      Runtime: python3.6
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import logging
+          import timedef lambda_handler(event, context):
+              logging.basicConfig(level=logging.DEBUG)
+              log = logging.getLogger(__name__)
+         
+              responseData = {}
+              physicalResourceId = {}
+              s3 = boto3.client('s3')
+	     if event['RequestType'] == 'Delete':
+                  try:
+         
+                      NewS3Bucket = event['ResourceProperties']['NewS3Bucket']
+                      bucket = s3.Bucket(NewS3Bucket)
+                      for key in bucket.objects.all():
+                          key.delete()
+                          bucket.delete()
+                          cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, physicalResourceId )
+                          return
+                  except Exception:
+                      cfnresponse.send(event, context, cfnresponse.FAILED, responseData, physicalResourceId )
+                      log.exception("Lambda execution has failed!")
+                      returntry:
+                  NewS3Bucket = event['ResourceProperties']['NewS3Bucket']
+                  StackName = event['ResourceProperties']['StackName']
+              
+                  s3.create_bucket(Bucket=NewS3Bucket)
+                  time.sleep(5)
+                  response = s3.put_bucket_tagging(
+                      Bucket=NewS3Bucket,
+                      Tagging={
+                          'TagSet': [
+                          {
+                          'Key': 'StackName',
+                          'Value': StackName
+                          },] })
+    
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, responseData, physicalResourceId )
+                  return
+              except Exception:
+                  cfnresponse.send(event, context, cfnresponse.FAILED, responseData, physicalResourceId )
+                  log.exception("Lambda execution has failed!")
+                  return
